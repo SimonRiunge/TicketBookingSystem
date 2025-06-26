@@ -1,0 +1,17 @@
+services:
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger-ui
+    ports:
+      - "8182:8080" # You can access this directly for testing
+    volumes:
+      - ./swagger-config.yaml:/usr/share/nginx/html/swagger-config.yaml # Mount at root only
+    environment:
+      SWAGGER_CONFIG_URL: /swagger-config.yaml # Not SWAGGER_JSON
+    restart: unless-stopped
+    networks:
+      - inventoryservice_default
+
+networks:
+  inventoryservice_default:
+    external: true

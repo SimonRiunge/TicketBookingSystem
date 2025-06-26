@@ -1,0 +1,190 @@
+services:
+  db:
+    image: postgres:latest
+    environment:
+      - POSTGRES_DB=ticketingDb
+      - POSTGRES_PASSWORD=g8keep3r
+      - POSTGRES_USER=postgres
+    ports:
+      - 5432:5432
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+#Kafka settings
+#1. Zookeeper
+  zookeeper:
+    image: zookeeper:latest
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - '2181:2181'
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 3000
+    volumes:
+      - zookeeper-data:/data
+
+#2. Kafka broker
+  kafka-broker:
+    image: confluentinc/cp-kafka:7.4.3
+    container_name: kafka-broker
+    ports:
+      - '9092:9092'
+      - '29092:29092'
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+#3. Kafka User interface
+  kafka-ui:
+    container_name: kafka_ui
+    image: provectuslabs/kafka-ui
+    ports:
+      - '8084:8080'
+    depends_on:
+      - kafka-broker
+    environment:
+      KAFKA_CLUSTERS_NAME: local
+      KAFKA_CLUSTERS_BOOTSTRAPSERVERS: kafka-broker:29092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+
+#Kafka schema registry
+  kafka-schema-registry:
+    image: confluentinc/cp-schema-registry
+    hostname: kafka-schema-registry
+    container_name: kafka-schema-registry
+    ports:
+      - '8085:8083'
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: kafka-schema-registry 
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka-broker:29092'
+      SCHEMA_REGISTRY_LISTENERS: http://kafka-schema-registry:8083
+    depends_on:
+      kafka-broker:
+        condition: service_healthy
+
+#Keycloak for securing the API GATEWAY
+#Keycloak database
+  keycloak-db:
+    container_name: keycloak-postgresql
+    image: postgres:15
+    ports:
+      - '5433:5432' # expose internal port 5432 as 5433 on host
+    volumes:
+      - ./volume-data/postgres_keycloak_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    restart: unless-stopped
+
+#Keycloak instance
+  keycloak:
+    container_name: keycloak
+    image: quay.io/keycloak/keycloak:24.0.4
+    command: ["start-dev","--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: admin
+      KC_DB_PASSWORD: password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - '8092:8080'
+    volumes:
+      - ./docker/keycloak/realms/:/opt/keycloak/data/import/
+    depends_on:
+      - keycloak-db
+#Inventory Service
+  inventoryservice:
+    build:
+      context: ./inventoryservice
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/ticketingDb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: g8keep3r
+    ports:
+      - 8081:8081
+#Booking service
+  booking-service:
+    container_name: booking-service
+    build:
+      context: ./booking-service
+      dockerfile: DockerFile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/ticketingDb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: g8keep3r
+    ports:
+      - '8082:8082'
+
+#Api Gateway configs
+#Redis - for rate limiting at the api gateway
+  redis:
+    image: redis:8
+    container_name: redis
+    ports:
+      - '6379:6379'
+#    networks:
+#      - inventoryservice_default
+
+  api-gateway:
+    build:
+      context: ./apigateway
+      dockerfile: Dockerfile
+    ports:
+      - '8181:8181'
+
+#Swagger-ui
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger-ui
+    ports:
+      - "8182:8080" # You can access this directly for testing
+    volumes:
+      - ./swagger-config.yaml:/usr/share/nginx/html/swagger-config.yaml # Mount at root only
+    environment:
+      SWAGGER_CONFIG_URL: /swagger-config.yaml # Not SWAGGER_JSON
+    restart: unless-stopped
+
+#Volumes
+volumes:
+  db-data: {}
+  pgadmin_data: {}
+  kafka-data: {}
+  zookeeper-data: {} #separate Zookepper volume from Kafka's volume

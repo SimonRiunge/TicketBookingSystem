@@ -1,0 +1,6 @@
+urls:
+  - url: http://localhost:8181/docs/inventoryservice/v1/api-docs
+    name: Inventory Service
+  - url: http://localhost:8181/docs/bookingservice/v1/api-docs
+    name: Booking Service
+validatorUrl: null

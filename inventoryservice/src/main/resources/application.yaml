@@ -1,0 +1,23 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: inventoryservice
+
+  datasource:
+    url: jdbc:postgresql://db:5432/ticketingDb
+    username: postgres
+    password: g8keep3r
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+
+#Swagger docs
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v1/api-docs

@@ -1,0 +1,118 @@
+server:
+  port: 8181
+
+spring:
+  application:
+    name: apigateway
+
+  data:
+    redis:
+      host: redis #host where Redis is running
+      port: 6379 #Default Redis port for rate limiter.
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient: # Global timeout settings for reactive HTTP client
+            wiretap: true # Enables logging for Netty requests/responses
+      default-filters:
+      - name: RequestRateLimiter
+        args:
+          redis-rate-limiter.replenish-rate: 10
+          redis-rate-limiter.burst-capacity: 20
+          key-resolver: "#{@IpKeyResolver}"
+#YAML route config
+#      routes:
+#      - id: booking_service
+#      uri: http://booking-service:8082
+#      predicates:
+#        - Path=/api/v1/booking/**
+# #     filters:
+#        - RewritePath=/api/v1/booking/(?<segment>.*), /${segment} #leave out if backend handles full path
+ #       - AddRequestHeader=X-Gateway-Header, InventoryService #Only if backend needs it
+#        - AddRequestParameter=source, gateway
+ #       - name: CircuitBreaker
+#          args:
+#            name: bookingCircuitBreaker
+#            fallbackUri: forward:/fallback/booking
+
+  main:
+    allow-bean-definition-overriding: true
+
+
+
+#Keycloak properties
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8092/realms/ticketing_system_security
+#User-defined
+keycloak:
+  auth:
+    jwk-set-uri: http://keycloak:8080/realms/ticketing_system_security/protocol/openid-connect/certs
+
+security:
+  excluded:
+    urls:
+      - "/"
+      - "/swagger-ui.html"
+      - "/swagger-ui/**"
+      - "/swagger-ui.css"
+      - "/swagger-ui-bundle.js"
+      - "/swagger-ui-standalone-preset.js"
+      - "/swagger-initializer.js"
+      - "/swagger-config.yaml"
+      - "/index.css"
+      - "/favicon-*.png"
+      - "/docs/**"
+      - "/v1/api-docs/**"          # ✅ Add this since your services expose v1
+      - "/swagger-resources/**"
+      - "/api-docs/**"
+      - "/webjars/**"
+      - "/swagger-ui/index.html"
+      - "/v3/api-docs/**"
+      - "/v3/api-docs/swagger-config"
+
+#Actuator properties
+management:
+  health:
+    circuitbreakers:
+      enabled: true
+
+#Expose all endpoints
+  endpoints:
+    web:
+      exposure:
+        include:
+        - '*'
+  endpoint:
+    health:
+      show-details: always
+
+#Resilience4j properties
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 8
+        failureRateThreshold: 50 #percentage i.e. 50% of the 8 i.e. 4
+        minimumNumberOfCalls: 4 #activate circuit breaker if the first 4 out of 8 calls fail
+        waitDurationInOpenState: 5s
+        permittedNumberOfCallsInHalfOpenState: 2
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+#timer limits
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 3s
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 2s
+
+

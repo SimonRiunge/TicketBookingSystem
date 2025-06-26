@@ -1,0 +1,17 @@
+services:
+  orderservice:
+    build:
+      context: .
+      dockerfile: DockerFile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/ticketingDb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: g8keep3r
+    ports:
+      - '8087:8087'
+    networks:
+      - inventoryservice_default
+
+networks:
+  inventoryservice_default:
+    external: true
